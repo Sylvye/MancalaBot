@@ -248,6 +248,8 @@ slots = [4] * 14
 slots[0] = 0 # p2 goal
 slots[7] = 0 # p1 goal
 
+depth = 8
+
 turn = 1
 
 printBoard(slots, player)
@@ -260,13 +262,22 @@ while not gameOver:
         canPlay = True
         while canPlay and not gameOver:
             moveIndex = -1
+            userInput = None
             while not moveIndex in range(1, 14):
-                userInput = input(f"{Fore.LIGHTWHITE_EX}Which slot do you want to move? {Style.RESET_ALL}")
-                while not userInput in ["1", "2", "3", "4", "5", "6", "help", "hint"]:
+                userInput = None
+                while not userInput in ["1", "2", "3", "4", "5", "6", "help", "hint", "depth", "board"]:
                     userInput = input(f"{Fore.LIGHTWHITE_EX}Which slot do you want to move? {Style.RESET_ALL}")
                 if userInput == "hint":
-                    hint = pickMove(slots, player)
-                    print(f"{Fore.LIGHTYELLOW_EX}Best slot to move is: {hint}{Style.RESET_ALL}")
+                    hint = pickMove(slots, player, depth=depth)
+                    print(f"{Fore.LIGHTYELLOW_EX}> Best slot to move is: {hint}{Style.RESET_ALL}")
+                elif userInput == "depth":
+                    userInput = None
+                    while not userInput in [str(n) for n in range(1, 10)]: # 1= min depth, 9 = max
+                        userInput = input(f"{Fore.LIGHTMAGENTA_EX}What depth do you want to set the solver to? [1-9] {Style.RESET_ALL}")
+                    depth = int(userInput)
+                    print(f"{Fore.LIGHTMAGENTA_EX}Depth set to {depth}.{Style.RESET_ALL}")
+                elif userInput == "board":
+                    printBoard(slots, player)
                 elif userInput == "help":
                     print(help)
                 else:
@@ -279,7 +290,7 @@ while not gameOver:
             moveIndex = -1
             while not moveIndex in range(1, 14):
                 # relativeIndex = random.randint(1, 6) # is inclusive for some reason
-                relativeIndex = pickMove(slots, bot)
+                relativeIndex = pickMove(slots, bot, depth)
                 moveIndex = convertRelativeIndex(relativeIndex, turn)
                 num = slots[moveIndex]
                 plural = "s" if num > 1 else ""
