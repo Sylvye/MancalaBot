@@ -1,3 +1,8 @@
+"""
+TODO: Make minimax algorithm hunt typically better moves first & search them deeper. (ex. moves where you can play again or capture)
+TODO: optimization! multithreading?
+"""
+
 import random
 from copy import deepcopy
 
