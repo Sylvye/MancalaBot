@@ -1,21 +1,18 @@
 """
-TODO: Make minimax algorithm hunt typically better moves first & search them deeper. (ex. moves where you can play again or capture)
-TODO: optimization! parallelism?
+TODO: Make minimax algorithm hunt typically better moves first & search them deeper (ex. moves where you can play again or capture)
+TODO: Optimization! Parallelism?
+TODO: Color pits that have recently changed
+TODO: Add a print when capturing occurs? OR otherwise visually represent it
 """
 
 import random
 import time
 from copy import deepcopy
+from colorama import init, Fore, Style
+init()
 
-def is_int(s):
-    try:
-        int(s)
-        return True
-    except ValueError:
-        return False
-
-
-def printBoard(slots, player):
+# prints the board fancily
+def printBoard(slots, perspective):
     cellWidth = max(2, len(str(max(slots))))
     indent = 6
 
@@ -23,7 +20,7 @@ def printBoard(slots, player):
         return " ".join(f"{slots[i]:>{cellWidth}}" for i in row)
         # return " ".join(f"{i:>{cellWidth}}" for i in row)
 
-    if player == 1:
+    if perspective == 1:
         topRow = range(13, 7, -1)
         botRow = range(1, 7)
         leftGoal = 0
@@ -52,21 +49,23 @@ def printBoard(slots, player):
 
     print()
     print(" " * labelPad + topLabel)
-    print(" " * indent + topStr)
-    print(" " * (indent-2) + leftGoalStr + (" " * innerSpace) + rightGoalStr)
-    print(" " * indent + botStr)
+    print(" " * indent + Fore.LIGHTYELLOW_EX + topStr + Style.RESET_ALL)
+    print(" " * (indent-2) + Fore.YELLOW + leftGoalStr + (" " * innerSpace) + Fore.BLUE + rightGoalStr + Style.RESET_ALL)
+    print(" " * indent + Fore.LIGHTBLUE_EX + botStr + Style.RESET_ALL)
     print(" " * labelPad + botLabel)
     print()
 
 
-def convertRelativeIndex(index, player):
+# converts a relative index [1-6] to an absolute index [0-13], given the player
+def convertRelativeIndex(index, perspective):
     if not 0 < index < 7:
         print("Enter a valid slot index [1-6]")
         return None
-    row = range(1, 7) if player == 1 else range(8, 14)
+    row = range(1, 7) if perspective == 1 else range(8, 14)
     return row[index-1]
 
 
+# returns whether the game is over or not, and which side needs to be cleared of remaining marbles
 def isGameOver(slots):
     for i in range(1, 7):
         if slots[i] > 0:
@@ -77,13 +76,14 @@ def isGameOver(slots):
     return True, 1
 
 
-def getPlayableMoves(slots, turn):
-    row = range(1, 7) if turn == 1 else range(8, 14)
+# returns a list of all legal moves given a board state
+def getPlayableMoves(slots, perspective):
+    row = range(1, 7) if perspective == 1 else range(8, 14)
     return [k + 1 for k, i in enumerate(row) if slots[i] > 0]
 
 
 # returns if the player can play again (T/F), if the game is over
-def move(slots, index, player):
+def move(slots, index, perspective):
     if slots[index] == 0:
         print("You can't move an empty slot!")
         return True, False
@@ -94,7 +94,7 @@ def move(slots, index, player):
 
     while marbles > 0:
         s = (s + 1) % 14
-        if (player == 1 and s == 0) or (player == 2 and s == 7):
+        if (perspective == 1 and s == 0) or (perspective == 2 and s == 7):
             continue
         slots[s] += 1
         marbles -= 1
@@ -102,12 +102,12 @@ def move(slots, index, player):
     playAgain = s in [0, 7]
 
     if not playAgain and slots[s] == 1 and slots[14-s] > 0: # capture if lands in empty slot and opposite slot has marbles
-        if player == 1 and 0 < s < 7:
+        if perspective == 1 and 0 < s < 7:
             slots[7] += slots[s] + slots[14-s]
             slots[s] = 0
             slots[14-s] = 0
             # print("Captured!")
-        elif player == 2 and 7 < s < 14:
+        elif perspective == 2 and 7 < s < 14:
             slots[0] += slots[s] + slots[14-s]
             slots[s] = 0
             slots[14-s] = 0
@@ -127,25 +127,27 @@ def move(slots, index, player):
     return playAgain, gameOver
 
 
-def evaluate(slots, playAs):
-    score = (slots[7] - slots[0]) if playAs == 1 else (slots[0] - slots[7])
+# returns estimated score of a board state
+def evaluate(slots, perspective):
+    score = (slots[7] - slots[0]) if perspective == 1 else (slots[0] - slots[7])
 
     p1_side = sum(slots[1:7])
     p2_side = sum(slots[8:14])
-    side_adv = (p1_side - p2_side) if playAs == 1 else (p2_side - p1_side)
+    side_adv = (p1_side - p2_side) if perspective == 1 else (p2_side - p1_side)
 
     return 3 * score + side_adv
 
 
-def miniMax(slots, turn, playAs, depth=8, alpha=-999, beta=999):
+# returns the minimax value of a board
+def miniMax(slots, turn, perspective, depth=8, alpha=-999, beta=999):
     if depth == 0:
-        return evaluate(slots, playAs)
+        return evaluate(slots, perspective)
 
     moves = getPlayableMoves(slots, turn)
     if not moves:
-        return evaluate(slots, playAs)
+        return evaluate(slots, perspective)
 
-    if turn == playAs:  # maximizing player
+    if turn == perspective: # maximizing player
         bestScore = -999
 
         for m in moves:
@@ -154,9 +156,9 @@ def miniMax(slots, turn, playAs, depth=8, alpha=-999, beta=999):
             nextTurn = turn if playAgain and not gameOver else (2 if turn == 1 else 1)
 
             if gameOver:
-                score = (copy[7] - copy[0]) if playAs == 1 else (copy[0] - copy[7])
+                score = (copy[7] - copy[0]) if perspective == 1 else (copy[0] - copy[7])
             else:
-                score = miniMax(copy, nextTurn, playAs, depth - 1, alpha, beta)
+                score = miniMax(copy, nextTurn, perspective, depth - 1, alpha, beta)
 
             bestScore = max(bestScore, score)
             alpha = max(alpha, bestScore)
@@ -166,7 +168,7 @@ def miniMax(slots, turn, playAs, depth=8, alpha=-999, beta=999):
 
         return bestScore
 
-    else:  # minimizing player
+    else: # minimizing player
         bestScore = 999
 
         for m in moves:
@@ -175,9 +177,9 @@ def miniMax(slots, turn, playAs, depth=8, alpha=-999, beta=999):
             nextTurn = turn if playAgain and not gameOver else (2 if turn == 1 else 1)
 
             if gameOver:
-                score = (copy[7] - copy[0]) if playAs == 1 else (copy[0] - copy[7])
+                score = (copy[7] - copy[0]) if perspective == 1 else (copy[0] - copy[7])
             else:
-                score = miniMax(copy, nextTurn, playAs, depth - 1, alpha, beta)
+                score = miniMax(copy, nextTurn, perspective, depth - 1, alpha, beta)
 
             bestScore = min(bestScore, score)
             beta = min(beta, bestScore)
@@ -188,7 +190,8 @@ def miniMax(slots, turn, playAs, depth=8, alpha=-999, beta=999):
         return bestScore
 
 
-def pickMove(slots, turn, playAs):
+# picks the best move of a board state using miniMax
+def pickMove(slots, perspective, depth=8):
     start_time = time.perf_counter()
 
     bestMove = -1
@@ -196,15 +199,15 @@ def pickMove(slots, turn, playAs):
     alpha = -999
     beta = 999
 
-    for m in getPlayableMoves(slots, turn):
+    for m in getPlayableMoves(slots, perspective):
         copy = deepcopy(slots)
-        playAgain, gameOver = move(copy, convertRelativeIndex(m, turn), turn)
+        playAgain, gameOver = move(copy, convertRelativeIndex(m, perspective), perspective)
 
         if gameOver:
-            score = copy[7] - copy[0] if playAs == 1 else copy[0] - copy[7]
+            score = copy[7] - copy[0] if perspective == 1 else copy[0] - copy[7]
         else:
-            nextTurn = turn if playAgain else (2 if turn == 1 else 1)
-            score = miniMax(copy, nextTurn, playAs, depth=8, alpha=alpha, beta=beta)
+            nextTurn = perspective if playAgain else (2 if perspective == 1 else 1)
+            score = miniMax(copy, nextTurn, perspective, depth, alpha=alpha, beta=beta)
 
         if score > bestScore:
             bestScore = score
@@ -221,14 +224,14 @@ def pickMove(slots, turn, playAs):
 
 
 
-print("Starting game of Mancala")
+print(f"{Fore.LIGHTGREEN_EX}Starting game of Mancala{Style.RESET_ALL}")
 
-help = "\n           MY SIDE\n       6  5  4  3  2  1\nMine>X                  X<Yours\n       1  2  3  4  5  6\n          YOUR SIDE\n"
-print("Help board (type \"help\" at any point to return to it.")
+help = f"\n           {Fore.LIGHTWHITE_EX}MY SIDE{Style.RESET_ALL}\n       {Fore.LIGHTYELLOW_EX}6  5  4  3  2  1\n{Fore.YELLOW}Mine>X                  {Fore.BLUE}X<Yours\n       {Fore.LIGHTBLUE_EX}1  2  3  4  5  6\n          {Fore.LIGHTWHITE_EX}YOUR SIDE\n{Style.RESET_ALL}"
+print(f"{Fore.GREEN}Help board (type \"help\" at any point to return to it.){Style.RESET_ALL}")
 print(help)
-print("When asked for an index, respond with a number 1-6 corresponding to the shown slots on the Mancala board")
+print(f"{Fore.GREEN}When asked for an index, respond with a number 1-6 corresponding to the shown slots on the Mancala board{Style.RESET_ALL}")
 
-player = input("Do you want to play first? (y/n): ")
+player = input(f"{Fore.LIGHTWHITE_EX}Do you want to play first? (y/n): {Style.RESET_ALL}")
 while not player in ["y", "n"]:
     player = input("Do you want to play first? (y/n): ")
 
@@ -239,7 +242,7 @@ else:
     player = 2
     bot = 1
 
-print(f"Player = P{player}, Bot = P{bot}")
+print(f"{Fore.GREEN}Player = P{player}, Bot = P{bot}{Style.RESET_ALL}")
 
 slots = [4] * 14
 slots[0] = 0 # p2 goal
@@ -252,21 +255,21 @@ printBoard(slots, player)
 gameOver = False
 
 while not gameOver:
-    print(f"It is player {turn}'s turn")
+    print(f"{Fore.GREEN}It is player {turn}'s turn.{Style.RESET_ALL}")
     if turn == player:
         canPlay = True
         while canPlay and not gameOver:
             moveIndex = -1
             while not moveIndex in range(1, 14):
-                userInput = input("Which slot do you want to move? ")
+                userInput = input(f"{Fore.LIGHTWHITE_EX}Which slot do you want to move? {Style.RESET_ALL}")
                 while not userInput in ["1", "2", "3", "4", "5", "6", "help", "hint"]:
-                    userInput = input("Which slot do you want to move? ")
+                    userInput = input(f"{Fore.LIGHTWHITE_EX}Which slot do you want to move? {Style.RESET_ALL}")
                 if userInput == "hint":
-                    hint = pickMove(slots, turn, player)
-                    print(f"Best slot to move is: {hint}")
+                    hint = pickMove(slots, player)
+                    print(f"{Fore.LIGHTYELLOW_EX}Best slot to move is: {hint}{Style.RESET_ALL}")
                 elif userInput == "help":
                     print(help)
-                if is_int(userInput):
+                else:
                     moveIndex = convertRelativeIndex(int(userInput), turn)
             canPlay, gameOver = move(slots, moveIndex, turn)
             printBoard(slots, player)
@@ -276,21 +279,23 @@ while not gameOver:
             moveIndex = -1
             while not moveIndex in range(1, 14):
                 # relativeIndex = random.randint(1, 6) # is inclusive for some reason
-                userInput = pickMove(slots, turn, bot)
-                print(f"> I want to move the marble in my slot #{userInput}!")
-                moveIndex = convertRelativeIndex(userInput, turn)
+                relativeIndex = pickMove(slots, bot)
+                moveIndex = convertRelativeIndex(relativeIndex, turn)
+                num = slots[moveIndex]
+                plural = "s" if num > 1 else ""
+                print(f"{Fore.LIGHTYELLOW_EX}> I want to move the {num} marble{plural} in my slot #{relativeIndex}!{Style.RESET_ALL}")
             canPlay, gameOver = move(slots, moveIndex, turn)
             printBoard(slots, player)
 
-    print(f"Player {turn}'s turn is over")
+    print(f"{Fore.GREEN}Player {turn}'s turn is over.{Style.RESET_ALL}")
 
     if not gameOver:
         turn = 2 if turn == 1 else 1
 
 
-print("Game is over!")
-print(f"Score: {slots[7]}-{slots[0]}")
+print(f"{Fore.LIGHTGREEN_EX}Game is over!{Style.RESET_ALL}")
+print(f"{Fore.GREEN}Score: {Fore.LIGHTBLUE_EX}{slots[7]}{Style.RESET_ALL}-{Fore.LIGHTYELLOW_EX}{slots[0]}{Style.RESET_ALL}")
 if slots[0] == slots[7]:
     print("It was a tie!")
 else:
-    print(f"Player {1 if slots[7] > slots[0] else 2} wins!")
+    print(f"{Fore.LIGHTGREEN_EX}Player {1 if slots[7] > slots[0] else 2} wins!{Style.RESET_ALL}")
