@@ -85,7 +85,7 @@ def getPlayableMoves(slots, perspective):
 # returns if the player can play again (T/F), if the game is over
 def move(slots, index, perspective):
     if slots[index] == 0:
-        print("You can't move an empty slot!")
+        print(f"{Fore.LIGHTRED_EX}You can't move an empty slot!{Style.RESET_ALL}")
         return True, False
 
     marbles = slots[index]
@@ -223,13 +223,27 @@ def pickMove(slots, perspective, depth=8):
     return bestMove
 
 
+print(f"{Fore.GREEN}Starting game of Mancala{Style.RESET_ALL}")
 
-print(f"{Fore.LIGHTGREEN_EX}Starting game of Mancala{Style.RESET_ALL}")
-
-help = f"\n           {Fore.LIGHTWHITE_EX}MY SIDE{Style.RESET_ALL}\n       {Fore.LIGHTYELLOW_EX}6  5  4  3  2  1\n{Fore.YELLOW}Mine>X                  {Fore.BLUE}X<Yours\n       {Fore.LIGHTBLUE_EX}1  2  3  4  5  6\n          {Fore.LIGHTWHITE_EX}YOUR SIDE\n{Style.RESET_ALL}"
-print(f"{Fore.GREEN}Help board (type \"help\" at any point to return to it.){Style.RESET_ALL}")
+help = (f"Help board (type \"help\" at any point to return to it.)\n" +
+        f"\n           {Fore.LIGHTWHITE_EX}MY SIDE{Style.RESET_ALL}" +
+        f"\n       {Fore.LIGHTYELLOW_EX}6  5  4  3  2  1" +
+        f"\n{Fore.YELLOW}{Style.BRIGHT}Mine>X                  {Fore.BLUE}X<Yours{Style.RESET_ALL}" +
+        f"\n       {Fore.LIGHTBLUE_EX}1  2  3  4  5  6" +
+        f"\n          {Fore.LIGHTWHITE_EX}YOUR SIDE{Style.RESET_ALL}" +
+        f"\n"
+)
+commands = (
+        f"\n{Fore.LIGHTGREEN_EX}Commands:{Style.RESET_ALL}" +
+        f"\n- {Fore.GREEN}\"help\"{Style.RESET_ALL} - Prints the help message" +
+        f"\n- {Fore.GREEN}\"list\"{Style.RESET_ALL} - Prints this command list" +
+        f"\n- {Fore.GREEN}\"board\"{Style.RESET_ALL} - Re-prints the current board" +
+        f"\n- {Fore.LIGHTYELLOW_EX}\"hint\"{Style.RESET_ALL} - The algorithm hints the player with what it thinks is the best move" +
+        f"\n- {Fore.LIGHTMAGENTA_EX}\"depth\"{Style.RESET_ALL} - Changes the maximum depth of the algorithm" +
+        f"\n"
+)
 print(help)
-print(f"{Fore.GREEN}When asked for an index, respond with a number 1-6 corresponding to the shown slots on the Mancala board{Style.RESET_ALL}")
+print(f"Enter command: {Fore.GREEN}\"list\"{Style.RESET_ALL} to get a list of helpful commands")
 
 player = input(f"{Fore.LIGHTWHITE_EX}Do you want to play first? (y/n): {Style.RESET_ALL}")
 while not player in ["y", "n"]:
@@ -242,7 +256,7 @@ else:
     player = 2
     bot = 1
 
-print(f"{Fore.GREEN}Player = P{player}, Bot = P{bot}{Style.RESET_ALL}")
+print(f"{Fore.LIGHTBLUE_EX}Player = P{player}{Style.RESET_ALL}, {Fore.LIGHTYELLOW_EX}Bot = P{bot}{Style.RESET_ALL}")
 
 slots = [4] * 14
 slots[0] = 0 # p2 goal
@@ -257,7 +271,7 @@ printBoard(slots, player)
 gameOver = False
 
 while not gameOver:
-    print(f"{Fore.GREEN}It is player {turn}'s turn.{Style.RESET_ALL}")
+    print(f"It is {Fore.LIGHTBLUE_EX if turn == player else Fore.LIGHTYELLOW_EX}P{turn}{Style.RESET_ALL}'s turn.")
     if turn == player:
         canPlay = True
         while canPlay and not gameOver:
@@ -265,22 +279,27 @@ while not gameOver:
             userInput = None
             while not moveIndex in range(1, 14):
                 userInput = None
-                while not userInput in ["1", "2", "3", "4", "5", "6", "help", "hint", "depth", "board"]:
-                    userInput = input(f"{Fore.LIGHTWHITE_EX}Which slot do you want to move? {Style.RESET_ALL}")
+                while not userInput in ["1", "2", "3", "4", "5", "6", "help", "list", "hint", "depth", "board"]:
+                    if userInput is not None:
+                        print(f"{Fore.LIGHTRED_EX}Not a valid command{Style.RESET_ALL}")
+                    userInput = input(f"{Fore.LIGHTWHITE_EX}Enter a slot number or a command: {Style.RESET_ALL}")
                 if userInput == "hint":
                     hint = pickMove(slots, player, depth=depth)
-                    print(f"{Fore.LIGHTYELLOW_EX}> Best slot to move is: {hint}{Style.RESET_ALL}")
+                    print(f"{Fore.LIGHTYELLOW_EX}> I think that the best slot to move is: {hint}{Style.RESET_ALL}")
                 elif userInput == "depth":
+                    print(f"Current depth: {Fore.LIGHTMAGENTA_EX}{depth}{Style.RESET_ALL}")
                     userInput = None
-                    while not userInput in [str(n) for n in range(1, 10)]: # 1= min depth, 9 = max
-                        userInput = input(f"{Fore.LIGHTMAGENTA_EX}What depth do you want to set the solver to? [1-9] {Style.RESET_ALL}")
+                    while not userInput in [str(n) for n in range(1, 11)]: # 1 = min depth, 10 = max
+                        userInput = input(f"{Fore.LIGHTWHITE_EX}What depth do you want to cap the solver at? {Fore.LIGHTMAGENTA_EX}[1-10] {Style.RESET_ALL}")
                     depth = int(userInput)
-                    print(f"{Fore.LIGHTMAGENTA_EX}Depth set to {depth}.{Style.RESET_ALL}")
+                    print(f"Depth was set to {Fore.LIGHTMAGENTA_EX}{depth}{Style.RESET_ALL}.")
                 elif userInput == "board":
                     printBoard(slots, player)
                 elif userInput == "help":
                     print(help)
-                else:
+                elif userInput == "list":
+                    print(commands)
+                else: # if the player entered a relative index to move
                     moveIndex = convertRelativeIndex(int(userInput), turn)
             canPlay, gameOver = move(slots, moveIndex, turn)
             printBoard(slots, player)
@@ -298,15 +317,16 @@ while not gameOver:
             canPlay, gameOver = move(slots, moveIndex, turn)
             printBoard(slots, player)
 
-    print(f"{Fore.GREEN}Player {turn}'s turn is over.{Style.RESET_ALL}")
+    print(f"{Fore.LIGHTBLUE_EX if turn == player else Fore.LIGHTYELLOW_EX}P{turn}{Style.RESET_ALL}'s turn is over.")
 
     if not gameOver:
         turn = 2 if turn == 1 else 1
 
 
-print(f"{Fore.LIGHTGREEN_EX}Game is over!{Style.RESET_ALL}")
-print(f"{Fore.GREEN}Score: {Fore.LIGHTBLUE_EX}{slots[7]}{Style.RESET_ALL}-{Fore.LIGHTYELLOW_EX}{slots[0]}{Style.RESET_ALL}")
+print(f"{Fore.GREEN}The game has ended!{Style.RESET_ALL}") # TODO: Make this tell the player how many marbles were claimed (and by who) in the end-of-game wipe
+print(f"Score: {Fore.LIGHTBLUE_EX}{slots[7]}{Style.RESET_ALL}-{Fore.LIGHTYELLOW_EX}{slots[0]}{Style.RESET_ALL}")
 if slots[0] == slots[7]:
     print("It was a tie!")
 else:
-    print(f"{Fore.LIGHTGREEN_EX}Player {1 if slots[7] > slots[0] else 2} wins!{Style.RESET_ALL}")
+    winner = 1 if slots[7] > slots[0] else 2
+    print(f"{Fore.LIGHTBLUE_EX if winner == player else Fore.LIGHTYELLOW_EX}P{winner}{Style.RESET_ALL} wins!")
