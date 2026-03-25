@@ -1,9 +1,10 @@
 """
 TODO: Make minimax algorithm hunt typically better moves first & search them deeper. (ex. moves where you can play again or capture)
-TODO: optimization! multithreading?
+TODO: optimization! parallelism?
 """
 
 import random
+import time
 from copy import deepcopy
 
 def is_int(s):
@@ -136,42 +137,64 @@ def evaluate(slots, playAs):
     return 3 * score + side_adv
 
 
-def miniMax(slots, turn, playAs, depth=6):
+def miniMax(slots, turn, playAs, depth=8, alpha=-999, beta=999):
     if depth == 0:
         return evaluate(slots, playAs)
 
     moves = getPlayableMoves(slots, turn)
     if not moves:
-        print("RAHHHH")
-        # return slots[7] - slots[0] if playAs == 1 else slots[0] - slots[7]
+        return evaluate(slots, playAs)
 
-    if turn == playAs:
+    if turn == playAs:  # maximizing player
         bestScore = -999
+
         for m in moves:
             copy = deepcopy(slots)
             playAgain, gameOver = move(copy, convertRelativeIndex(m, turn), turn)
             nextTurn = turn if playAgain and not gameOver else (2 if turn == 1 else 1)
-            score = (
-                (copy[7] - copy[0]) if playAs == 1 else (copy[0] - copy[7])
-            ) if gameOver else miniMax(copy, nextTurn, playAs, depth - 1)
+
+            if gameOver:
+                score = (copy[7] - copy[0]) if playAs == 1 else (copy[0] - copy[7])
+            else:
+                score = miniMax(copy, nextTurn, playAs, depth - 1, alpha, beta)
+
             bestScore = max(bestScore, score)
+            alpha = max(alpha, bestScore)
+
+            if alpha >= beta:
+                break  # prune
+
         return bestScore
-    else:
+
+    else:  # minimizing player
         bestScore = 999
+
         for m in moves:
             copy = deepcopy(slots)
             playAgain, gameOver = move(copy, convertRelativeIndex(m, turn), turn)
             nextTurn = turn if playAgain and not gameOver else (2 if turn == 1 else 1)
-            score = (
-                (copy[7] - copy[0]) if playAs == 1 else (copy[0] - copy[7])
-            ) if gameOver else miniMax(copy, nextTurn, playAs, depth - 1)
+
+            if gameOver:
+                score = (copy[7] - copy[0]) if playAs == 1 else (copy[0] - copy[7])
+            else:
+                score = miniMax(copy, nextTurn, playAs, depth - 1, alpha, beta)
+
             bestScore = min(bestScore, score)
+            beta = min(beta, bestScore)
+
+            if alpha >= beta:
+                break  # prune
+
         return bestScore
 
 
 def pickMove(slots, turn, playAs):
+    start_time = time.perf_counter()
+
     bestMove = -1
     bestScore = -999
+    alpha = -999
+    beta = 999
 
     for m in getPlayableMoves(slots, turn):
         copy = deepcopy(slots)
@@ -181,11 +204,18 @@ def pickMove(slots, turn, playAs):
             score = copy[7] - copy[0] if playAs == 1 else copy[0] - copy[7]
         else:
             nextTurn = turn if playAgain else (2 if turn == 1 else 1)
-            score = miniMax(copy, nextTurn, playAs, depth=6)
+            score = miniMax(copy, nextTurn, playAs, depth=8, alpha=alpha, beta=beta)
 
         if score > bestScore:
             bestScore = score
             bestMove = m
+
+        alpha = max(alpha, bestScore)
+
+    end_time = time.perf_counter()
+    elapsed_time = end_time - start_time
+
+    print(f"Execution time: {elapsed_time:.4f} seconds")
 
     return bestMove
 
@@ -193,7 +223,7 @@ def pickMove(slots, turn, playAs):
 
 print("Starting game of Mancala")
 
-help = "\n           MY SIDE\n       X  X  X  X  X  X\nMine>X                  X<Yours\n       1  2  3  4  5  6\n          YOUR SIDE\n"
+help = "\n           MY SIDE\n       6  5  4  3  2  1\nMine>X                  X<Yours\n       1  2  3  4  5  6\n          YOUR SIDE\n"
 print("Help board (type \"help\" at any point to return to it.")
 print(help)
 print("When asked for an index, respond with a number 1-6 corresponding to the shown slots on the Mancala board")
@@ -225,7 +255,7 @@ while not gameOver:
     print(f"It is player {turn}'s turn")
     if turn == player:
         canPlay = True
-        while canPlay:
+        while canPlay and not gameOver:
             moveIndex = -1
             while not moveIndex in range(1, 14):
                 userInput = input("Which slot do you want to move? ")
@@ -242,7 +272,7 @@ while not gameOver:
             printBoard(slots, player)
     else:
         canPlay = True
-        while canPlay:
+        while canPlay and not gameOver:
             moveIndex = -1
             while not moveIndex in range(1, 14):
                 # relativeIndex = random.randint(1, 6) # is inclusive for some reason
