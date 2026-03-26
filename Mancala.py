@@ -1,8 +1,6 @@
 """
 TODO: Make minimax algorithm hunt typically better moves first & search them deeper (ex. moves where you can play again or capture)
 TODO: Optimization! Parallelism?
-TODO: Add a print when capturing occurs? OR otherwise visually represent it
-TODO: Add some way to type a command before the game begins (if you are P2)
 """
 
 import random
@@ -12,8 +10,6 @@ from colorama import init, Fore, Style
 init()
 
 # prints the board fancily
-from colorama import Fore, Style
-
 def printBoard(slots, perspective, lastSlots=None):
     cellWidth = max(2, len(str(max(slots))))
     indent = 6
@@ -210,7 +206,7 @@ def miniMax(slots, turn, perspective, depth=8, alpha=-999, beta=999):
 
 
 # picks the best move of a board state using miniMax
-def pickMove(slots, perspective, depth=8):
+def pickMove(slots, perspective, depth=8, debug=False):
     start_time = time.perf_counter()
 
     bestMove = -1
@@ -237,7 +233,8 @@ def pickMove(slots, perspective, depth=8):
     end_time = time.perf_counter()
     elapsed_time = end_time - start_time
 
-    print(f"Execution time: {elapsed_time:.4f} seconds")
+    if debug:
+        print(f"Execution time: {elapsed_time:.4f} seconds")
 
     return bestMove
 
@@ -259,14 +256,15 @@ commands = (
         f"\n- {Fore.GREEN}\"board\"{Style.RESET_ALL} - Re-prints the current board" +
         f"\n- {Fore.LIGHTYELLOW_EX}\"hint\"{Style.RESET_ALL} - The algorithm hints the player with what it thinks is the best move" +
         f"\n- {Fore.LIGHTMAGENTA_EX}\"depth\"{Style.RESET_ALL} - Changes the maximum depth of the algorithm" +
+        f"\n- {Fore.LIGHTMAGENTA_EX}\"debug\"{Style.RESET_ALL} - Toggles debugging prints" +
         f"\n"
 )
 print(help)
 print(f"Enter command: {Fore.GREEN}\"list\"{Style.RESET_ALL} to get a list of helpful commands")
 
-player = input(f"{Fore.LIGHTWHITE_EX}Do you want to play first? (y/n): {Style.RESET_ALL}")
+player = None
 while not player in ["y", "n"]:
-    player = input("Do you want to play first? (y/n): ")
+    player = input(f"{Fore.LIGHTWHITE_EX}Do you want to play first? (y/n): {Style.RESET_ALL}")
 
 if player == "y":
     player = 1
@@ -275,6 +273,9 @@ else:
     player = 2
     bot = 1
 
+p1Color = Fore.LIGHTBLUE_EX if player == 1 else Fore.LIGHTYELLOW_EX
+p2Color = Fore.LIGHTBLUE_EX if player == 2 else Fore.LIGHTYELLOW_EX
+
 print(f"{Fore.LIGHTBLUE_EX}Player = P{player}{Style.RESET_ALL}, {Fore.LIGHTYELLOW_EX}Bot = P{bot}{Style.RESET_ALL}")
 
 slots = [4] * 14
@@ -282,14 +283,54 @@ slots[0] = 0 # p2 goal
 slots[7] = 0 # p1 goal
 lastSlots = deepcopy(slots)
 
-depth = 8
-
 turn = 1
+depth = 8
+debug = False
+
+def getInput(prompt, acceptable):
+    global depth, debug
+
+    userInput = None
+    moveIndex = None
+    while not userInput in acceptable:
+        if userInput is not None:
+            print(f"{Fore.LIGHTRED_EX}Not a valid command{Style.RESET_ALL}")
+        userInput = input(prompt)
+    if userInput == "hint":
+        hint = pickMove(slots, player, depth=depth, debug=debug)
+        print(f"{Fore.LIGHTYELLOW_EX}> I think that the best slot to move is: {hint}{Style.RESET_ALL}")
+    elif userInput == "depth":
+        print(f"Current depth: {Fore.LIGHTMAGENTA_EX}{depth}{Style.RESET_ALL}")
+        userInput = None
+        while not userInput in [str(n) for n in range(1, 11)]:  # 1 = min depth, 10 = max
+            userInput = input(
+                f"{Fore.LIGHTWHITE_EX}What depth do you want to cap the solver at? {Fore.LIGHTMAGENTA_EX}[1-10] {Style.RESET_ALL}")
+        depth = int(userInput)
+        print(f"Depth was set to {Fore.LIGHTMAGENTA_EX}{depth}{Style.RESET_ALL}.")
+    elif userInput == "board":
+        printBoard(slots, player, lastSlots=lastSlots)
+    elif userInput == "help":
+        print(help)
+    elif userInput == "list":
+        print(commands)
+    elif userInput == "debug":
+        debug = not debug
+        enabledStr = "enabled" if debug else "disabled"
+        print(f"Debugging is now {Fore.LIGHTMAGENTA_EX}{enabledStr}{Style.RESET_ALL}")
+    elif userInput == "":
+        return "Start"
+    else: # if the player entered a relative index to move
+        return convertRelativeIndex(int(userInput), turn)
+
+    return None
+
+confirm = None
+while confirm != "Start":
+    confirm = getInput(f"{Fore.LIGHTWHITE_EX}Type a command or press enter to start: {Style.RESET_ALL}", ["help", "list", "depth", "debug", ""])
 
 printBoard(slots, player)
 
 gameOver = False
-
 while not gameOver:
     print(f"It is {Fore.LIGHTBLUE_EX if turn == player else Fore.LIGHTYELLOW_EX}P{turn}{Style.RESET_ALL}'s turn.")
     startScores = [slots[7],slots[0]]
@@ -299,29 +340,7 @@ while not gameOver:
             moveIndex = -1
             userInput = None
             while not moveIndex in range(1, 14):
-                userInput = None
-                while not userInput in ["1", "2", "3", "4", "5", "6", "help", "list", "hint", "depth", "board"]:
-                    if userInput is not None:
-                        print(f"{Fore.LIGHTRED_EX}Not a valid command{Style.RESET_ALL}")
-                    userInput = input(f"{Fore.LIGHTWHITE_EX}Enter a slot number or a command: {Style.RESET_ALL}")
-                if userInput == "hint":
-                    hint = pickMove(slots, player, depth=depth)
-                    print(f"{Fore.LIGHTYELLOW_EX}> I think that the best slot to move is: {hint}{Style.RESET_ALL}")
-                elif userInput == "depth":
-                    print(f"Current depth: {Fore.LIGHTMAGENTA_EX}{depth}{Style.RESET_ALL}")
-                    userInput = None
-                    while not userInput in [str(n) for n in range(1, 11)]: # 1 = min depth, 10 = max
-                        userInput = input(f"{Fore.LIGHTWHITE_EX}What depth do you want to cap the solver at? {Fore.LIGHTMAGENTA_EX}[1-10] {Style.RESET_ALL}")
-                    depth = int(userInput)
-                    print(f"Depth was set to {Fore.LIGHTMAGENTA_EX}{depth}{Style.RESET_ALL}.")
-                elif userInput == "board":
-                    printBoard(slots, player, lastSlots=lastSlots)
-                elif userInput == "help":
-                    print(help)
-                elif userInput == "list":
-                    print(commands)
-                else: # if the player entered a relative index to move
-                    moveIndex = convertRelativeIndex(int(userInput), turn)
+                moveIndex = getInput(f"{Fore.LIGHTWHITE_EX}Enter a slot number or a command: {Style.RESET_ALL}", ["1", "2", "3", "4", "5", "6", "help", "list", "hint", "depth", "board", "debug"])
             canPlay, gameOver = move(slots, moveIndex, turn)
             printBoard(slots, player, lastSlots=lastSlots)
     else:
@@ -330,7 +349,7 @@ while not gameOver:
             moveIndex = -1
             while not moveIndex in range(1, 14):
                 # relativeIndex = random.randint(1, 6) # is inclusive for some reason
-                relativeIndex = pickMove(slots, bot, depth)
+                relativeIndex = pickMove(slots, bot, depth=depth, debug=debug)
                 moveIndex = convertRelativeIndex(relativeIndex, turn)
                 num = slots[moveIndex]
                 plural = "s" if num > 1 else ""
@@ -342,8 +361,6 @@ while not gameOver:
 
     p1gain = endScores[0] - startScores[0]
     p2gain = endScores[1] - startScores[1]
-    p1Color = Fore.LIGHTBLUE_EX if player == 1 else Fore.LIGHTYELLOW_EX
-    p2Color = Fore.LIGHTBLUE_EX if player == 2 else Fore.LIGHTYELLOW_EX
     p1gainStr = f"({p1Color}+{p1gain}{Style.RESET_ALL})" if p1gain > 0 else ""
     p2gainStr = f"({p2Color}+{p2gain}{Style.RESET_ALL})" if p2gain > 0 else ""
     spacer = " " if p1gain > 0 and p2gain > 0 else ""
@@ -356,7 +373,7 @@ while not gameOver:
 
 
 print(f"{Fore.GREEN}The game has ended!{Style.RESET_ALL}")
-print(f"Score: {Fore.LIGHTBLUE_EX}{slots[7]}{Style.RESET_ALL}-{Fore.LIGHTYELLOW_EX}{slots[0]}{Style.RESET_ALL}")
+print(f"Score: {p1Color}{slots[7]}{Style.RESET_ALL}-{p2Color}{slots[0]}{Style.RESET_ALL}")
 if slots[0] == slots[7]:
     print("It was a tie!")
 else:
