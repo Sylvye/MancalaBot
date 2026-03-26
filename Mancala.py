@@ -1,8 +1,8 @@
 """
 TODO: Make minimax algorithm hunt typically better moves first & search them deeper (ex. moves where you can play again or capture)
 TODO: Optimization! Parallelism?
-TODO: Color pits that have recently changed
 TODO: Add a print when capturing occurs? OR otherwise visually represent it
+TODO: Add some way to type a command before the game begins (if you are P2)
 """
 
 import random
@@ -12,13 +12,27 @@ from colorama import init, Fore, Style
 init()
 
 # prints the board fancily
-def printBoard(slots, perspective):
+from colorama import Fore, Style
+
+def printBoard(slots, perspective, lastSlots=None):
     cellWidth = max(2, len(str(max(slots))))
     indent = 6
 
+    def colorSlot(i):
+        changed = lastSlots is not None and slots[i] != lastSlots[i]
+
+        if i in topRow or i == leftGoal:
+            base = Fore.LIGHTYELLOW_EX
+        else:
+            base = Fore.LIGHTBLUE_EX
+
+        return (Style.BRIGHT + base) if changed else base
+
+    def formatCell(i):
+        return f"{colorSlot(i)}{slots[i]:>{cellWidth}}{Style.RESET_ALL}"
+
     def formatRow(row):
-        return " ".join(f"{slots[i]:>{cellWidth}}" for i in row)
-        # return " ".join(f"{i:>{cellWidth}}" for i in row)
+        return " ".join(formatCell(i) for i in row)
 
     if perspective == 1:
         topRow = range(13, 7, -1)
@@ -38,20 +52,25 @@ def printBoard(slots, perspective):
     topStr = formatRow(topRow)
     botStr = formatRow(botRow)
 
-    leftGoalStr = f"{slots[leftGoal]:>{cellWidth}}"
-    rightGoalStr = f"{slots[rightGoal]:>{cellWidth}}"
+    leftGoalStr = formatCell(leftGoal)
+    rightGoalStr = formatCell(rightGoal)
 
-    innerSpace = len(topStr) - len(leftGoalStr) - len(rightGoalStr) + 4
+    # Visible width should ignore ANSI escape codes, so use plain text widths
+    plainTopStr = " ".join(f"{slots[i]:>{cellWidth}}" for i in topRow)
+    plainLeftGoalStr = f"{slots[leftGoal]:>{cellWidth}}"
+    plainRightGoalStr = f"{slots[rightGoal]:>{cellWidth}}"
+
+    innerSpace = len(plainTopStr) - len(plainLeftGoalStr) - len(plainRightGoalStr) + 4
     if innerSpace < 1:
         innerSpace = 1
 
-    labelPad = indent + max(0, (len(topStr) - len(topLabel)) // 2)
+    labelPad = indent + max(0, (len(plainTopStr) - len(topLabel)) // 2)
 
     print()
     print(" " * labelPad + topLabel)
-    print(" " * indent + Fore.LIGHTYELLOW_EX + topStr + Style.RESET_ALL)
-    print(" " * (indent-2) + Fore.YELLOW + leftGoalStr + (" " * innerSpace) + Fore.BLUE + rightGoalStr + Style.RESET_ALL)
-    print(" " * indent + Fore.LIGHTBLUE_EX + botStr + Style.RESET_ALL)
+    print(" " * indent + topStr)
+    print(" " * (indent - 2) + leftGoalStr + (" " * innerSpace) + rightGoalStr)
+    print(" " * indent + botStr)
     print(" " * labelPad + botLabel)
     print()
 
@@ -228,7 +247,7 @@ print(f"{Fore.GREEN}Starting game of Mancala{Style.RESET_ALL}")
 help = (f"Help board (type \"help\" at any point to return to it.)\n" +
         f"\n           {Fore.LIGHTWHITE_EX}MY SIDE{Style.RESET_ALL}" +
         f"\n       {Fore.LIGHTYELLOW_EX}6  5  4  3  2  1" +
-        f"\n{Fore.YELLOW}{Style.BRIGHT}Mine>X                  {Fore.BLUE}X<Yours{Style.RESET_ALL}" +
+        f"\n{Fore.LIGHTYELLOW_EX}Mine>X                  {Fore.LIGHTBLUE_EX}X<Yours{Style.RESET_ALL}" +
         f"\n       {Fore.LIGHTBLUE_EX}1  2  3  4  5  6" +
         f"\n          {Fore.LIGHTWHITE_EX}YOUR SIDE{Style.RESET_ALL}" +
         f"\n"
@@ -261,6 +280,7 @@ print(f"{Fore.LIGHTBLUE_EX}Player = P{player}{Style.RESET_ALL}, {Fore.LIGHTYELLO
 slots = [4] * 14
 slots[0] = 0 # p2 goal
 slots[7] = 0 # p1 goal
+lastSlots = deepcopy(slots)
 
 depth = 8
 
@@ -272,6 +292,7 @@ gameOver = False
 
 while not gameOver:
     print(f"It is {Fore.LIGHTBLUE_EX if turn == player else Fore.LIGHTYELLOW_EX}P{turn}{Style.RESET_ALL}'s turn.")
+    startScores = [slots[7],slots[0]]
     if turn == player:
         canPlay = True
         while canPlay and not gameOver:
@@ -294,7 +315,7 @@ while not gameOver:
                     depth = int(userInput)
                     print(f"Depth was set to {Fore.LIGHTMAGENTA_EX}{depth}{Style.RESET_ALL}.")
                 elif userInput == "board":
-                    printBoard(slots, player)
+                    printBoard(slots, player, lastSlots=lastSlots)
                 elif userInput == "help":
                     print(help)
                 elif userInput == "list":
@@ -302,7 +323,7 @@ while not gameOver:
                 else: # if the player entered a relative index to move
                     moveIndex = convertRelativeIndex(int(userInput), turn)
             canPlay, gameOver = move(slots, moveIndex, turn)
-            printBoard(slots, player)
+            printBoard(slots, player, lastSlots=lastSlots)
     else:
         canPlay = True
         while canPlay and not gameOver:
@@ -315,15 +336,26 @@ while not gameOver:
                 plural = "s" if num > 1 else ""
                 print(f"{Fore.LIGHTYELLOW_EX}> I want to move the {num} marble{plural} in my slot #{relativeIndex}!{Style.RESET_ALL}")
             canPlay, gameOver = move(slots, moveIndex, turn)
-            printBoard(slots, player)
+            printBoard(slots, player, lastSlots=lastSlots)
 
-    print(f"{Fore.LIGHTBLUE_EX if turn == player else Fore.LIGHTYELLOW_EX}P{turn}{Style.RESET_ALL}'s turn is over.")
+    endScores = [slots[7], slots[0]]
+
+    p1gain = endScores[0] - startScores[0]
+    p2gain = endScores[1] - startScores[1]
+    p1Color = Fore.LIGHTBLUE_EX if player == 1 else Fore.LIGHTYELLOW_EX
+    p2Color = Fore.LIGHTBLUE_EX if player == 2 else Fore.LIGHTYELLOW_EX
+    p1gainStr = f"({p1Color}+{p1gain}{Style.RESET_ALL})" if p1gain > 0 else ""
+    p2gainStr = f"({p2Color}+{p2gain}{Style.RESET_ALL})" if p2gain > 0 else ""
+    spacer = " " if p1gain > 0 and p2gain > 0 else ""
+
+    print(f"{Fore.LIGHTBLUE_EX if turn == player else Fore.LIGHTYELLOW_EX}P{turn}{Style.RESET_ALL}'s turn is over. {p1gainStr + spacer + p2gainStr}")
 
     if not gameOver:
         turn = 2 if turn == 1 else 1
+        lastSlots = deepcopy(slots)
 
 
-print(f"{Fore.GREEN}The game has ended!{Style.RESET_ALL}") # TODO: Make this tell the player how many marbles were claimed (and by who) in the end-of-game wipe
+print(f"{Fore.GREEN}The game has ended!{Style.RESET_ALL}")
 print(f"Score: {Fore.LIGHTBLUE_EX}{slots[7]}{Style.RESET_ALL}-{Fore.LIGHTYELLOW_EX}{slots[0]}{Style.RESET_ALL}")
 if slots[0] == slots[7]:
     print("It was a tie!")
