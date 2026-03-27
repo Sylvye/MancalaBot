@@ -300,7 +300,7 @@ def pickMoveParallel(state, moves, perspective, maxDepth=10, debugPrints=False, 
 
 import matplotlib.pyplot as plt
 
-def plot_exec_time_data(timeData):
+def plot_exec_time_data():
     complexities = [x[0] for x in execTimeData]
     serial = [x[1] for x in execTimeData]
     parallel = [x[2] for x in execTimeData]
@@ -319,6 +319,10 @@ def plot_exec_time_data(timeData):
     plt.grid(True)
     plt.xscale("log")
     plt.yscale("log")
+
+    plotName = input(f"{CYAN}SAVE{RESET} Raw Time v Complexity plot as: ")
+    if plotName != "":
+        plt.savefig(plotName + ".png")
     plt.show()
 
     # 2. Difference plot
@@ -330,6 +334,10 @@ def plot_exec_time_data(timeData):
     plt.title("Parallel Advantage by Complexity")
     plt.grid(True)
     plt.xscale("log")
+
+    plotName = input(f"{CYAN}SAVE{RESET} Difference plot as: ")
+    if plotName != "":
+        plt.savefig(plotName + ".png")
     plt.show()
 
     # 3. Speedup ratio
@@ -341,10 +349,17 @@ def plot_exec_time_data(timeData):
     plt.title("Parallel Speedup Ratio by Complexity")
     plt.grid(True)
     plt.xscale("log")
+
+    plotName = input(f"{CYAN}SAVE{RESET} Speedup Ratio plot as: ")
+    if plotName != "":
+        plt.savefig(plotName + ".png")
     plt.show()
 
 
 def main():
+    global execTimeData
+    execTimeData = []
+
     helpStr = (f"Help board (type \"help\" at any point to return to it.)\n" +
             f"\n           {WHITE}MY SIDE{RESET}" +
             f"\n       {YELLOW}6  5  4  3  2  1" +
@@ -400,7 +415,7 @@ def main():
                 print(f"{RED}Not a valid command{RESET}")
             command = input(prompt)
         if command == "hint":
-            hint, _, _ = pickMove(slots, player, dynam=dynamic, maxDepth=depth, debugPrints=debug, useParallel=parallel)
+            hint = pickMove(slots, player, dynam=dynamic, maxDepth=depth, debugPrints=debug, useParallel=parallel)
             print(f"{YELLOW}> I think that your best slot to move is: {hint}{RESET}")
         elif command == "depth":
             print(f"Current depth: {PINK}{depth}{RESET}")
@@ -483,14 +498,26 @@ def main():
 
     print(f"{GREEN}The game has ended after {turns} turns!{RESET}")
     print(f"Score: {p1Color}{slots[7]}{RESET}-{p2Color}{slots[0]}{RESET}")
+    winner = None
     if slots[0] == slots[7]:
         print("It was a tie!")
     else:
         winner = 1 if slots[7] > slots[0] else 2
         print(f"{BLUE if winner == player else YELLOW}P{winner}{RESET} wins!")
 
-    if debug:
-        plot_exec_time_data(execTimeData)
+    # if debug:
+    #     plot_exec_time_data()
+
+    return {
+        "winner": winner if slots[0] != slots[7] else 0,
+        "turns": turns,
+        "player": player,
+        "bot": bot,
+        "depth": depth,
+        "dynamic": dynamic,
+        "parallel": parallel,
+        "exec_time_data": execTimeData[:],
+    }
 
 
 if __name__ == "__main__":
