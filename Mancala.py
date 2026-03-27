@@ -21,6 +21,13 @@ BLUE = "\033[94m"
 PINK = "\033[95m"
 PURPLE = "\033[35m"
 
+# global data & flags
+depth = 10
+dynamic = False
+parallel = True
+debug = True
+execTimeData = []
+
 # prints some text with "DEBUG: " at the front
 def printDebug(text):
     print(f"{CYAN}DEBUG{RESET}: {text}")
@@ -240,7 +247,8 @@ def pickMove(state, perspective, maxDepth=10, debugPrints=False, dynam=False, us
     printDebug(f"Complexity: {complexity}")
     m, paralTime = pickMoveParallel(state, moves, perspective, dynam=dynam, debugPrints=debugPrints)
     m, serialTime = pickMoveSerial(state, moves, perspective, dynam=dynam, debugPrints=debugPrints)
-    return m, paralTime, serialTime
+    execTimeData.append((complexity, serialTime, paralTime))
+    return m
 
 # picks the best move of a board state using miniMax
 def pickMoveSerial(state, moves, perspective, maxDepth=10, debugPrints=False, dynam=False):
@@ -290,12 +298,51 @@ def pickMoveParallel(state, moves, perspective, maxDepth=10, debugPrints=False, 
     return bestMove, elapsed_time
 
 
-# global data & flags
-depth = 10
-dynamic = False
-parallel = True
-debug = True
-execTimeData = []
+import matplotlib.pyplot as plt
+
+def plot_exec_time_data(timeData):
+    complexities = [x[0] for x in execTimeData]
+    serial = [x[1] for x in execTimeData]
+    parallel = [x[2] for x in execTimeData]
+
+    delta = [p - s for _, s, p in execTimeData]  # positive => parallel slower
+    ratio = [s / p if p > 0 else float("inf") for _, s, p in execTimeData]
+
+    # 1. Raw times vs complexity
+    plt.figure(figsize=(10, 6))
+    plt.scatter(complexities, serial, label="Serial", alpha=0.7)
+    plt.scatter(complexities, parallel, label="Parallel", alpha=0.7)
+    plt.xlabel("Complexity")
+    plt.ylabel("Execution time (s)")
+    plt.title("Serial vs Parallel Time by Complexity")
+    plt.legend()
+    plt.grid(True)
+    plt.xscale("log")
+    plt.yscale("log")
+    plt.show()
+
+    # 2. Difference plot
+    plt.figure(figsize=(10, 6))
+    plt.scatter(complexities, delta, alpha=0.7)
+    plt.axhline(0, linestyle="--")
+    plt.xlabel("Complexity")
+    plt.ylabel("Parallel - Serial time (s)")
+    plt.title("Parallel Advantage by Complexity")
+    plt.grid(True)
+    plt.xscale("log")
+    plt.show()
+
+    # 3. Speedup ratio
+    plt.figure(figsize=(10, 6))
+    plt.scatter(complexities, ratio, alpha=0.7)
+    plt.axhline(1, linestyle="--")
+    plt.xlabel("Complexity")
+    plt.ylabel("Serial / Parallel")
+    plt.title("Parallel Speedup Ratio by Complexity")
+    plt.grid(True)
+    plt.xscale("log")
+    plt.show()
+
 
 def main():
     helpStr = (f"Help board (type \"help\" at any point to return to it.)\n" +
@@ -343,7 +390,7 @@ def main():
     lastSlots = copy(slots) # version of the board before the most recent move
     turn = 1 # which player is currently playing
 
-    # handles userinput, TODO: FIND A BETTER WAY TO HANDLE THIS
+    # handles userinput TODO: FIND A BETTER WAY TO HANDLE THIS
     def getInput(prompt, acceptable):
         global depth, dynamic, debug
 
@@ -392,7 +439,6 @@ def main():
     printBoard(slots, player)
 
     gameOver = False
-    totalExecTime = 0
     turns = 0
 
     while not gameOver:
@@ -413,8 +459,7 @@ def main():
                 moveIndex = -1
                 while not moveIndex in range(1, 14):
                     # relativeIndex = random.randint(1, 6) # is inclusive for some reason
-                    relativeIndex, parallelTimeElapsed, serialTimeElapsed = pickMove(slots, bot, dynam=dynamic, maxDepth=depth, debugPrints=debug, useParallel=parallel)
-                    totalExecTime += parallelTimeElapsed + serialTimeElapsed
+                    relativeIndex = pickMove(slots, bot, dynam=dynamic, maxDepth=depth, debugPrints=debug, useParallel=parallel)
                     moveIndex = convertRelativeIndex(relativeIndex, turn)
                     num = slots[moveIndex]
                     plural = "s" if num > 1 else ""
@@ -435,16 +480,17 @@ def main():
             turn = 2 if turn == 1 else 1
             lastSlots = copy(slots)
 
-    if debug:
-        printDebug(f"Average time per execution: {(totalExecTime / turns):.4f}s")
 
-    print(f"{GREEN}The game has ended!{RESET}")
+    print(f"{GREEN}The game has ended after {turns} turns!{RESET}")
     print(f"Score: {p1Color}{slots[7]}{RESET}-{p2Color}{slots[0]}{RESET}")
     if slots[0] == slots[7]:
         print("It was a tie!")
     else:
         winner = 1 if slots[7] > slots[0] else 2
         print(f"{BLUE if winner == player else YELLOW}P{winner}{RESET} wins!")
+
+    if debug:
+        plot_exec_time_data(execTimeData)
 
 
 if __name__ == "__main__":
