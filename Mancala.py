@@ -1,10 +1,14 @@
 # TODO: Add command to toggle parallelism
 # TODO: Add threshold to pick between serial and parallel
 #   ^-> Make a graph of complexity vs time for both versions to determine threshold
+# TODO: Instead of asking who goes first, instead ask who plays as P1 and P2, instead choose from (player, bot, random)
+#   ^-> Whenever a human is to play, flip the board to face them. The human playing should always be at the bottom
 
+import random
 import time
 from copy import copy
 from concurrent.futures import ProcessPoolExecutor
+import os
 
 RESET = "\033[0m"
 BOLD = "\033[1m"
@@ -240,13 +244,13 @@ def miniMax(state, turn, perspective, maxDepth=10, dynam=False, alpha=float("-in
         return bestScore
 
 # returns the best move found. Decides whether to use parallel or serial search based on complexity
-def pickMove(state, perspective, maxDepth=10, debugPrints=False, dynam=False, useParallel=True):
+def pickMove(state, perspective, maxDepth=10, executor=None, debugPrints=False, dynam=False, useParallel=True):
     remaining = sum(state[i] for i in range(1, 7)) + sum(state[i] for i in range(8, 14))
     moves = getSortedMoves(state, perspective)
     complexity = (len(moves) * remaining) ** 2 * (maxDepth * (2 if useParallel else 0.5)) ** 2
     printDebug(f"Complexity: {complexity}")
-    m, paralTime = pickMoveParallel(state, moves, perspective, dynam=dynam, debugPrints=debugPrints)
-    m, serialTime = pickMoveSerial(state, moves, perspective, dynam=dynam, debugPrints=debugPrints)
+    m, paralTime = pickMoveParallel(state, moves, perspective, executor, maxDepth=maxDepth, dynam=dynam, debugPrints=debugPrints)
+    m, serialTime = pickMoveSerial(state, moves, perspective, maxDepth=maxDepth, dynam=dynam, debugPrints=debugPrints)
     execTimeData.append((complexity, serialTime, paralTime))
     return m
 
@@ -276,7 +280,7 @@ def pickMoveSerial(state, moves, perspective, maxDepth=10, debugPrints=False, dy
     return bestMove, elapsed_time
 
 # picks the best move of a board state using miniMax, splits work across multiple processes
-def pickMoveParallel(state, moves, perspective, maxDepth=10, debugPrints=False, dynam=False, max_workers=None):
+def pickMoveParallel(state, moves, perspective, executor, maxDepth=10, debugPrints=False, dynam=False):
     start_time = time.perf_counter()
 
     tasks = [(state, perspective, m, maxDepth, dynam) for m in moves]
@@ -284,11 +288,10 @@ def pickMoveParallel(state, moves, perspective, maxDepth=10, debugPrints=False, 
     bestMove = -1
     bestScore = float("-inf")
 
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        for move_rel, score in executor.map(evaluate_root_move, tasks):
-            if score > bestScore:
-                bestScore = score
-                bestMove = move_rel
+    for move_rel, score in executor.map(evaluate_root_move, tasks):
+        if score > bestScore:
+            bestScore = score
+            bestMove = move_rel
 
     elapsed_time = time.perf_counter() - start_time
 
@@ -298,202 +301,162 @@ def pickMoveParallel(state, moves, perspective, maxDepth=10, debugPrints=False, 
     return bestMove, elapsed_time
 
 
-import matplotlib.pyplot as plt
+def pickMoveRandom(state, perspective):
+    moves = getSortedMoves(state, perspective)
+    return random.choice(moves)
 
-def plot_exec_time_data():
-    complexities = [x[0] for x in execTimeData]
-    serial = [x[1] for x in execTimeData]
-    parallel = [x[2] for x in execTimeData]
 
-    delta = [p - s for _, s, p in execTimeData]  # positive => parallel slower
-    ratio = [s / p if p > 0 else float("inf") for _, s, p in execTimeData]
+def playHuman():
+    pass
 
-    # 1. Raw times vs complexity
-    plt.figure(figsize=(10, 6))
-    plt.scatter(complexities, serial, label="Serial", alpha=0.7)
-    plt.scatter(complexities, parallel, label="Parallel", alpha=0.7)
-    plt.xlabel("Complexity")
-    plt.ylabel("Execution time (s)")
-    plt.title("Serial vs Parallel Time by Complexity")
-    plt.legend()
-    plt.grid(True)
-    plt.xscale("log")
-    plt.yscale("log")
 
-    plotName = input(f"{CYAN}SAVE{RESET} Raw Time v Complexity plot as: ")
-    if plotName != "":
-        plt.savefig(plotName + ".png")
-    plt.show()
+def playBot():
+    pass
 
-    # 2. Difference plot
-    plt.figure(figsize=(10, 6))
-    plt.scatter(complexities, delta, alpha=0.7)
-    plt.axhline(0, linestyle="--")
-    plt.xlabel("Complexity")
-    plt.ylabel("Parallel - Serial time (s)")
-    plt.title("Parallel Advantage by Complexity")
-    plt.grid(True)
-    plt.xscale("log")
 
-    plotName = input(f"{CYAN}SAVE{RESET} Difference plot as: ")
-    if plotName != "":
-        plt.savefig(plotName + ".png")
-    plt.show()
-
-    # 3. Speedup ratio
-    plt.figure(figsize=(10, 6))
-    plt.scatter(complexities, ratio, alpha=0.7)
-    plt.axhline(1, linestyle="--")
-    plt.xlabel("Complexity")
-    plt.ylabel("Serial / Parallel")
-    plt.title("Parallel Speedup Ratio by Complexity")
-    plt.grid(True)
-    plt.xscale("log")
-
-    plotName = input(f"{CYAN}SAVE{RESET} Speedup Ratio plot as: ")
-    if plotName != "":
-        plt.savefig(plotName + ".png")
-    plt.show()
+def playRandom():
+    pass
 
 
 def main():
-    global execTimeData
-    execTimeData = []
+    with ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
+        global execTimeData
+        execTimeData = []
 
-    helpStr = (f"Help board (type \"help\" at any point to return to it.)\n" +
-            f"\n           {WHITE}MY SIDE{RESET}" +
-            f"\n       {YELLOW}6  5  4  3  2  1" +
-            f"\n{YELLOW}Mine>X                  {BLUE}X<Yours{RESET}" +
-            f"\n       {BLUE}1  2  3  4  5  6" +
-            f"\n          {WHITE}YOUR SIDE{RESET}" +
-            f"\n"
-    )
-    commandListStr = (
-            f"\n{LIME}Commands:{RESET}" +
-            f"\n- {GREEN}\"help\"{RESET} - Prints the help message" +
-            f"\n- {GREEN}\"list\"{RESET} - Prints this command list" +
-            f"\n- {GREEN}\"board\"{RESET} - Re-prints the current board" +
-            f"\n- {YELLOW}\"hint\"{RESET} - The algorithm hints the player with what it thinks is the best move" +
-            f"\n- {PINK}\"depth\"{RESET} - Changes the maximum search depth" +
-            f"\n- {PINK}\"dyna\"{RESET} - Toggles dynamic search expansion" +
-            f"\n- {PINK}\"paral\"{RESET} - Toggles parallel search method" +
-            f"\n- {PINK}\"debug\"{RESET} - Toggles debugging prints" +
-            f"\n"
-    )
+        helpStr = (f"Help board (type \"help\" at any point to return to it.)\n" +
+                f"\n           {WHITE}MY SIDE{RESET}" +
+                f"\n       {YELLOW}6  5  4  3  2  1" +
+                f"\n{YELLOW}Mine>X                  {BLUE}X<Yours{RESET}" +
+                f"\n       {BLUE}1  2  3  4  5  6" +
+                f"\n          {WHITE}YOUR SIDE{RESET}" +
+                f"\n"
+        )
+        commandListStr = (
+                f"\n{LIME}Commands:{RESET}" +
+                f"\n- {GREEN}\"help\"{RESET} - Prints the help message" +
+                f"\n- {GREEN}\"list\"{RESET} - Prints this command list" +
+                f"\n- {GREEN}\"board\"{RESET} - Re-prints the current board" +
+                f"\n- {YELLOW}\"hint\"{RESET} - The algorithm hints the player with what it thinks is the best move" +
+                f"\n- {PINK}\"depth\"{RESET} - Changes the maximum search depth" +
+                f"\n- {PINK}\"dyna\"{RESET} - Toggles dynamic search expansion" +
+                f"\n- {PINK}\"paral\"{RESET} - Toggles parallel search method" +
+                f"\n- {PINK}\"debug\"{RESET} - Toggles debugging prints" +
+                f"\n"
+        )
 
-    print(f"{GREEN}Starting game of Mancala{RESET}")
-    print(helpStr)
-    print(f"Enter command: {GREEN}\"list\"{RESET} to get a list of helpful commands")
+        print(f"{GREEN}Starting game of Mancala{RESET}")
+        print(helpStr)
+        print(f"Enter command: {GREEN}\"list\"{RESET} to get a list of helpful commands")
 
-    player = None
-    while not player in ["y", "n"]:
-        player = input(f"{WHITE}Do you want to play first? (y/n): {RESET}")
+        player = None
+        while not player in ["y", "n"]:
+            player = input(f"{WHITE}Do you want to play first? (y/n): {RESET}")
 
-    if player == "y":
-        player, bot = 1, 2
-    else:
-        player, bot = 2, 1
-
-    p1Color = BLUE if player == 1 else YELLOW
-    p2Color = BLUE if player == 2 else YELLOW
-
-    print(f"{BLUE}Player = P{player}{RESET}, {YELLOW}Bot = P{bot}{RESET}")
-
-    slots = [4] * 14 # the game board
-    slots[0] = 0 # p2 goal
-    slots[7] = 0 # p1 goal
-    lastSlots = copy(slots) # version of the board before the most recent move
-    turn = 1 # which player is currently playing
-
-    # handles userinput TODO: FIND A BETTER WAY TO HANDLE THIS
-    def getInput(prompt, acceptable):
-        global depth, dynamic, debug
-
-        command = None
-        while not command in acceptable:
-            if command is not None:
-                print(f"{RED}Not a valid command{RESET}")
-            command = input(prompt)
-        if command == "hint":
-            hint = pickMove(slots, player, dynam=dynamic, maxDepth=depth, debugPrints=debug, useParallel=parallel)
-            print(f"{YELLOW}> I think that your best slot to move is: {hint}{RESET}")
-        elif command == "depth":
-            print(f"Current depth: {PINK}{depth}{RESET}")
-            command = None
-            while not command in [str(n) for n in range(1, 51)]:  # 1 = min depth, 50 = max
-                command = input(
-                    f"{WHITE}What depth do you want to cap the solver at? {PINK}[1-50] {RESET}")
-            depth = int(command)
-            print(f"Depth was set to {PINK}{depth}{RESET}.")
-        elif command == "board":
-            printBoard(slots, player, lastSlots=lastSlots)
-        elif command == "help":
-            print(helpStr)
-        elif command == "list":
-            print(commandListStr)
-        elif command == "debug":
-            debug = not debug
-            enabledStr = "ENABLED" if debug else "DISABLED"
-            print(f"Debugging is now {PINK}{enabledStr}{RESET}")
-        elif command == "dyna":
-            dynamic = not dynamic
-            enabledStr = "ENABLED" if dynamic else "DISABLED"
-            print(f"Dynamic search expansion is now {PINK}{enabledStr}{RESET}")
-        elif command == "":
-            return "Start"
-        else: # if the player entered a relative index to move
-            return convertRelativeIndex(int(command), turn)
-
-        return None
-
-    # Maybe a better confirmation than "press enter to start" is needed
-    confirm = None
-    while confirm != "Start":
-        confirm = getInput(f"{WHITE}Type a command or press enter to start: {RESET}", ["help", "list", "depth", "debug", "dyna", ""])
-
-    printBoard(slots, player)
-
-    gameOver = False
-    turns = 0
-
-    while not gameOver:
-        turns += 1
-        print(f"It is {BLUE if turn == player else YELLOW}P{turn}{RESET}'s turn.")
-        startScores = (slots[7],slots[0])
-        if turn == player:
-            canPlay = True
-            while canPlay and not gameOver:
-                moveIndex = -1
-                while not moveIndex in range(1, 14):
-                    moveIndex = getInput(f"{WHITE}Enter a slot number or a command: {RESET}", ["1", "2", "3", "4", "5", "6", "help", "list", "hint", "depth", "board", "debug", "dyna"])
-                canPlay, captured, gameOver = move(slots, moveIndex, turn)
-                printBoard(slots, player, lastSlots=lastSlots)
+        if player == "y":
+            player, bot = 1, 2
         else:
-            canPlay = True
-            while canPlay and not gameOver:
-                moveIndex = -1
-                while not moveIndex in range(1, 14):
-                    # relativeIndex = random.randint(1, 6) # is inclusive for some reason
-                    relativeIndex = pickMove(slots, bot, dynam=dynamic, maxDepth=depth, debugPrints=debug, useParallel=parallel)
-                    moveIndex = convertRelativeIndex(relativeIndex, turn)
-                    num = slots[moveIndex]
-                    plural = "s" if num > 1 else ""
-                    print(f"{YELLOW}> I want to move the {num} marble{plural} in my slot #{relativeIndex}!{RESET}")
-                canPlay, captured, gameOver = move(slots, moveIndex, turn)
+            player, bot = 2, 1
+
+        p1Color = BLUE if player == 1 else YELLOW
+        p2Color = BLUE if player == 2 else YELLOW
+
+        print(f"{BLUE}Player = P{player}{RESET}, {YELLOW}Bot = P{bot}{RESET}")
+
+        slots = [4] * 14 # the game board
+        slots[0] = 0 # p2 goal
+        slots[7] = 0 # p1 goal
+        lastSlots = copy(slots) # version of the board before the most recent move
+        turn = 1 # which player is currently playing
+
+        # handles userinput TODO: FIND A BETTER WAY TO HANDLE THIS
+        def getInput(prompt, acceptable):
+            global depth, dynamic, debug
+
+            command = None
+            while not command in acceptable:
+                if command is not None:
+                    print(f"{RED}Not a valid command{RESET}")
+                command = input(prompt)
+            if command == "hint":
+                hint = pickMove(slots, player, executor=executor, dynam=dynamic, maxDepth=depth, debugPrints=debug, useParallel=parallel)
+                print(f"{YELLOW}> I think that your best slot to move is: {hint}{RESET}")
+            elif command == "depth":
+                print(f"Current depth: {PINK}{depth}{RESET}")
+                command = None
+                while not command in [str(n) for n in range(1, 51)]:  # 1 = min depth, 50 = max
+                    command = input(
+                        f"{WHITE}What depth do you want to cap the solver at? {PINK}[1-50] {RESET}")
+                depth = int(command)
+                print(f"Depth was set to {PINK}{depth}{RESET}.")
+            elif command == "board":
                 printBoard(slots, player, lastSlots=lastSlots)
+            elif command == "help":
+                print(helpStr)
+            elif command == "list":
+                print(commandListStr)
+            elif command == "debug":
+                debug = not debug
+                enabledStr = "ENABLED" if debug else "DISABLED"
+                print(f"Debugging is now {PINK}{enabledStr}{RESET}")
+            elif command == "dyna":
+                dynamic = not dynamic
+                enabledStr = "ENABLED" if dynamic else "DISABLED"
+                print(f"Dynamic search expansion is now {PINK}{enabledStr}{RESET}")
+            elif command == "":
+                return "Start"
+            else: # if the player entered a relative index to move
+                return convertRelativeIndex(int(command), turn)
 
-        endScores = (slots[7], slots[0])
-        p1gain = endScores[0] - startScores[0]
-        p2gain = endScores[1] - startScores[1]
-        p1gainStr = f"({p1Color}+{p1gain}{RESET})" if p1gain > 0 else ""
-        p2gainStr = f"({p2Color}+{p2gain}{RESET})" if p2gain > 0 else ""
-        spacer = " " if p1gain > 0 and p2gain > 0 else ""
+            return None
 
-        print(f"{BLUE if turn == player else YELLOW}P{turn}{RESET}'s turn is over. {p1gainStr + spacer + p2gainStr}")
+        # Maybe a better confirmation than "press enter to start" is needed
+        confirm = None
+        while confirm != "Start":
+            confirm = getInput(f"{WHITE}Type a command or press enter to start: {RESET}", ["help", "list", "depth", "debug", "dyna", ""])
 
-        if not gameOver:
-            turn = 2 if turn == 1 else 1
-            lastSlots = copy(slots)
+        printBoard(slots, player)
+
+        gameOver = False
+        turns = 0
+
+        while not gameOver:
+            turns += 1
+            print(f"It is {BLUE if turn == player else YELLOW}P{turn}{RESET}'s turn.")
+            startScores = (slots[7],slots[0])
+            if turn == player:
+                canPlay = True
+                while canPlay and not gameOver:
+                    moveIndex = -1
+                    while not moveIndex in range(1, 14):
+                        moveIndex = getInput(f"{WHITE}Enter a slot number or a command: {RESET}", ["1", "2", "3", "4", "5", "6", "help", "list", "hint", "depth", "board", "debug", "dyna"])
+                    canPlay, captured, gameOver = move(slots, moveIndex, turn)
+                    printBoard(slots, player, lastSlots=lastSlots)
+            else:
+                canPlay = True
+                while canPlay and not gameOver:
+                    moveIndex = -1
+                    while not moveIndex in range(1, 14):
+                        # relativeIndex = random.randint(1, 6) # is inclusive for some reason
+                        relativeIndex = pickMove(slots, bot, executor=executor, dynam=dynamic, maxDepth=depth, debugPrints=debug, useParallel=parallel)
+                        moveIndex = convertRelativeIndex(relativeIndex, turn)
+                        num = slots[moveIndex]
+                        plural = "s" if num > 1 else ""
+                        print(f"{YELLOW}> I want to move the {num} marble{plural} in my slot #{relativeIndex}!{RESET}")
+                    canPlay, captured, gameOver = move(slots, moveIndex, turn)
+                    printBoard(slots, player, lastSlots=lastSlots)
+
+            endScores = (slots[7], slots[0])
+            p1gain = endScores[0] - startScores[0]
+            p2gain = endScores[1] - startScores[1]
+            p1gainStr = f"({p1Color}+{p1gain}{RESET})" if p1gain > 0 else ""
+            p2gainStr = f"({p2Color}+{p2gain}{RESET})" if p2gain > 0 else ""
+            spacer = " " if p1gain > 0 and p2gain > 0 else ""
+
+            print(f"{BLUE if turn == player else YELLOW}P{turn}{RESET}'s turn is over. {p1gainStr + spacer + p2gainStr}")
+
+            if not gameOver:
+                turn = 2 if turn == 1 else 1
+                lastSlots = copy(slots)
 
 
     print(f"{GREEN}The game has ended after {turns} turns!{RESET}")
